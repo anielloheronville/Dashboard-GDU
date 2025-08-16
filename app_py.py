@@ -99,7 +99,6 @@ def simular_processos_diarios(n_dias, start_day_of_year, latitude_rad, altitude,
 # SEÇÃO 2: FUNÇÕES PARA EXECUÇÃO DA ANÁLISE E VISUALIZAÇÃO
 # =============================================================================
 
-@st.cache_data
 def executar_analise_janelas(datas_plantio, ciclo_dias, n_simulacoes, config):
     """Executa a análise de Monte Carlo para uma lista de datas de plantio."""
     resultados_janelas = []
