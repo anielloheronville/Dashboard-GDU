@@ -60,7 +60,7 @@ def simular_processos_diarios(n_dias: int, start_day_of_year: int, latitude_rad:
     armazenamento_c1[0] = cfg['capacidade_max_camada1'] * 0.8; armazenamento_c2[0] = cfg['capacidade_max_camada2'] * 0.8
     gdu_acumulado = 0.0; current_date = datetime(2025, 1, 1) + timedelta(days=start_day_of_year - 1)
     for i in range(1, n_dias):
-        month = current_date.month; params_mes = cfg['CLIMA_MENSAL'][str(month)] # <-- CORREÇÃO APLICADA AQUI
+        month = current_date.month; params_mes = cfg['CLIMA_MENSAL'][str(month)]
         p_seco_chuvoso, p_chuvoso_chuvoso = params_mes['p_chuva']; matriz_transicao_chuva = np.array([[1 - p_seco_chuvoso, p_seco_chuvoso], [1 - p_chuvoso_chuvoso, p_chuvoso_chuvoso]])
         if np.random.rand() < matriz_transicao_chuva[estado_chuva[i-1], 1]: estado_chuva[i] = 1
         precipitacao[i] = gamma.rvs(a=params_mes['formato_gama'], scale=params_mes['escala_gama']) if estado_chuva[i] == 1 else 0.0
@@ -97,7 +97,6 @@ def simular_processos_diarios(n_dias: int, start_day_of_year: int, latitude_rad:
         if fator_estresse < 1.0: dias_estresse[i] = 1
         gdu_ajustado[i] = gdu_padrao[i] * fator_estresse; gdu_acumulado += gdu_ajustado[i]
     return gdu_ajustado, dias_estresse, precipitacao, runoff
-
 
 # =============================================================================
 # SEÇÃO 2: FUNÇÕES PARA EXECUÇÃO DA ANÁLISE E VISUALIZAÇÃO
@@ -153,6 +152,7 @@ def gerar_graficos_distribuicao_plotly(df_completo: pd.DataFrame) -> Tuple[go.Fi
 
 def gerar_grafico_tradeoff_plotly(df_medianas: pd.DataFrame) -> go.Figure:
     """Gera um gráfico de dispersão para visualizar o trade-off entre GDU e estresse."""
+    df_medianas.index = pd.to_datetime(df_medianas.index) # <-- CORREÇÃO APLICADA AQUI
     df_medianas['data_plantio_str'] = df_medianas.index.strftime('%d/%m')
     fig = px.scatter(df_medianas, x='dias_estresse_hidrico', y='gdu_final_ajustado',
                      text='data_plantio_str', title="Análise de Trade-Off: GDU vs. Estresse Hídrico",
