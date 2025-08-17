@@ -18,13 +18,16 @@ MODEL_CONSTANTS = {
     'COEF_TEMP_TERMO_2_PM': 900, 'COEF_VENDO_TERMO_2_PM': 0.34, 'ALBEDO_PADRAO': 0.23,
     'COEF_ANGSTROM_A': 0.25, 'COEF_ANGSTROM_B': 0.50,
 }
+# PARÂMETROS DE CHUVA MODIFICADOS PARA MENOR INTENSIDADE
 MONTHLY_CLIMATE_PARAMS = {
     1: {'p_chuva': [0.20, 0.75], 'formato_gama': 2.5, 'escala_gama': 12.0}, 2: {'p_chuva': [0.22, 0.78], 'formato_gama': 2.5, 'escala_gama': 11.5},
     3: {'p_chuva': [0.25, 0.70], 'formato_gama': 2.2, 'escala_gama': 11.0}, 4: {'p_chuva': [0.45, 0.55], 'formato_gama': 2.0, 'escala_gama': 9.0},
     5: {'p_chuva': [0.75, 0.30], 'formato_gama': 1.8, 'escala_gama': 6.0}, 6: {'p_chuva': [0.90, 0.20], 'formato_gama': 1.5, 'escala_gama': 5.0},
     7: {'p_chuva': [0.92, 0.18], 'formato_gama': 1.5, 'escala_gama': 4.5}, 8: {'p_chuva': [0.88, 0.25], 'formato_gama': 1.8, 'escala_gama': 5.5},
-    9: {'p_chuva': [0.70, 0.40], 'formato_gama': 2.0, 'escala_gama': 7.0}, 10: {'p_chuva': [0.40, 0.60], 'formato_gama': 2.2, 'escala_gama': 9.5},
-    11: {'p_chuva': [0.30, 0.70], 'formato_gama': 2.4, 'escala_gama': 10.5}, 12: {'p_chuva': [0.20, 0.80], 'formato_gama': 2.5, 'escala_gama': 12.5},
+    9: {'p_chuva': [0.70, 0.40], 'formato_gama': 2.0, 'escala_gama': 7.0},
+    10: {'p_chuva': [0.40, 0.60], 'formato_gama': 2.2, 'escala_gama': 7.5}, # Reduzido
+    11: {'p_chuva': [0.30, 0.70], 'formato_gama': 2.4, 'escala_gama': 8.5}, # Reduzido
+    12: {'p_chuva': [0.20, 0.80], 'formato_gama': 2.5, 'escala_gama': 10.0},# Reduzido
 }
 
 # =============================================================================
@@ -93,10 +96,12 @@ def simular_processos_diarios(n_dias: int, start_day_of_year: int, latitude_rad:
         cap_disponivel_total_raiz = (cfg['capacidade_max_camada1'] - cfg['ponto_murcha_camada1']) + (cfg['capacidade_max_camada2'] - cfg['ponto_murcha_camada2']) * min(1, max(0, (prof_raiz_efetiva - cfg['profundidade_camada1']) / cfg['profundidade_camada2']))
         agua_disponivel_total_raiz = max(0, armazenamento_c1[i] - cfg['ponto_murcha_camada1']) + max(0, armazenamento_c2[i] - cfg['ponto_murcha_camada2'])
         fator_umidade_relativa = agua_disponivel_total_raiz / cap_disponivel_total_raiz if cap_disponivel_total_raiz > 0 else 0
-        umbral_estresse = 0.45; fator_estresse = min(1.0, fator_umidade_relativa / umbral_estresse) if fator_umidade_relativa < umbral_estresse else 1.0
+        umbral_estresse = 0.60 # LIMITE DE ESTRESSE MAIS RÍGIDO
+        fator_estresse = min(1.0, fator_umidade_relativa / umbral_estresse) if fator_umidade_relativa < umbral_estresse else 1.0
         if fator_estresse < 1.0: dias_estresse[i] = 1
         gdu_ajustado[i] = gdu_padrao[i] * fator_estresse; gdu_acumulado += gdu_ajustado[i]
     return gdu_ajustado, dias_estresse, precipitacao, runoff
+
 
 # =============================================================================
 # SEÇÃO 2: FUNÇÕES PARA EXECUÇÃO DA ANÁLISE E VISUALIZAÇÃO
@@ -221,8 +226,13 @@ if st.button("▶️ Executar Análise de Janelas de Plantio"):
             )
         st.success("Análise concluída com sucesso!")
         df_medianas = df_resultados_completos.groupby('data_plantio').median()
+        
+        # Converte o índice para datetime para as operações seguintes
+        df_medianas.index = pd.to_datetime(df_medianas.index)
+
         st.subheader("📊 Resultados da Simulação (Valores Medianos)")
-        st.dataframe(df_medianas.round(1))
+        st.dataframe(df_medianas.round(1).rename(lambda x: x.strftime('%Y-%m-%d')))
+        
         csv_data = df_resultados_completos.to_csv(index=False).encode('utf-8')
         st.download_button(
            label="📥 Baixar todos os resultados em CSV",
