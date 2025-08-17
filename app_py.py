@@ -152,7 +152,7 @@ def gerar_graficos_distribuicao_plotly(df_completo: pd.DataFrame) -> Tuple[go.Fi
 
 def gerar_grafico_tradeoff_plotly(df_medianas: pd.DataFrame) -> go.Figure:
     """Gera um gráfico de dispersão para visualizar o trade-off entre GDU e estresse."""
-    df_medianas.index = pd.to_datetime(df_medianas.index) # <-- CORREÇÃO APLICADA AQUI
+    df_medianas.index = pd.to_datetime(df_medianas.index) # Converte o índice para Datetime
     df_medianas['data_plantio_str'] = df_medianas.index.strftime('%d/%m')
     fig = px.scatter(df_medianas, x='dias_estresse_hidrico', y='gdu_final_ajustado',
                      text='data_plantio_str', title="Análise de Trade-Off: GDU vs. Estresse Hídrico",
@@ -244,13 +244,13 @@ if st.button("▶️ Executar Análise de Janelas de Plantio"):
         menor_estresse_valor = df_medianas['dias_estresse_hidrico'].min()
         col1, col2 = st.columns(2)
         with col1:
-            st.metric(label="Melhor Janela para GDU Máximo (Mediana)", value=datetime.strptime(melhor_gdu_data, '%Y-%m-%d').strftime('%d/%m/%Y'), delta=f"{melhor_gdu_valor:.1f} GDU")
-            st.markdown(f"A data de plantio em **{datetime.strptime(melhor_gdu_data, '%Y-%m-%d').strftime('%d/%m/%Y')}** resultou no maior acúmulo mediano de Graus-Dia.")
+            st.metric(label="Melhor Janela para GDU Máximo (Mediana)", value=melhor_gdu_data.strftime('%d/%m/%Y'), delta=f"{melhor_gdu_valor:.1f} GDU")
+            st.markdown(f"A data de plantio em **{melhor_gdu_data.strftime('%d/%m/%Y')}** resultou no maior acúmulo mediano de Graus-Dia.")
         with col2:
-            st.metric(label="Melhor Janela para Estresse Mínimo (Mediana)", value=datetime.strptime(menor_estresse_data, '%Y-%m-%d').strftime('%d/%m/%Y'), delta=f"{menor_estresse_valor:.0f} dias de estresse", delta_color="inverse")
-            st.markdown(f"A data de plantio em **{datetime.strptime(menor_estresse_data, '%Y-%m-%d').strftime('%d/%m/%Y')}** apresentou a menor quantidade mediana de dias sob estresse hídrico.")
+            st.metric(label="Melhor Janela para Estresse Mínimo (Mediana)", value=menor_estresse_data.strftime('%d/%m/%Y'), delta=f"{menor_estresse_valor:.0f} dias de estresse", delta_color="inverse")
+            st.markdown(f"A data de plantio em **{menor_estresse_data.strftime('%d/%m/%Y')}** apresentou a menor quantidade mediana de dias sob estresse hídrico.")
         if melhor_gdu_data == menor_estresse_data:
-            st.info(f"🏆 **Recomendação:** A data de **{datetime.strptime(melhor_gdu_data, '%Y-%m-%d').strftime('%d/%m/%Y')}** parece ser a ideal, pois maximiza o GDU e minimiza o estresse hídrico simultaneamente, com base nas medianas.")
+            st.info(f"🏆 **Recomendação:** A data de **{melhor_gdu_data.strftime('%d/%m/%Y')}** parece ser a ideal, pois maximiza o GDU e minimiza o estresse hídrico simultaneamente, com base nas medianas.")
         else:
             st.warning("⚠️ **Atenção:** Existe um trade-off. Use os gráficos acima para avaliar o risco de cada data e tomar a decisão final ponderando os riscos hídricos versus o potencial produtivo.")
     else:
