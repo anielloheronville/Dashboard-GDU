@@ -5,7 +5,7 @@ import plotly.express as px
 import plotly.graph_objects as go
 from scipy.stats import gamma
 from datetime import timedelta, datetime
-from typing import Dict, Any, Tuple
+from typing import Dict, Any, Tuple, List
 from numpy.typing import NDArray
 import json
 
@@ -98,14 +98,19 @@ def simular_processos_diarios(n_dias: int, start_day_of_year: int, latitude_rad:
         gdu_ajustado[i] = gdu_padrao[i] * fator_estresse; gdu_acumulado += gdu_ajustado[i]
     return gdu_ajustado, dias_estresse, precipitacao, runoff
 
-
 # =============================================================================
 # SEÇÃO 2: FUNÇÕES PARA EXECUÇÃO DA ANÁLISE E VISUALIZAÇÃO
 # =============================================================================
 @st.cache_data
-def executar_analise_janelas(datas_plantio: pd.DatetimeIndex, ciclo_dias: int, n_simulacoes: int, config_json: str) -> pd.DataFrame:
+def executar_analise_janelas(
+    datas_plantio_str: List[str],
+    ciclo_dias: int,
+    n_simulacoes: int,
+    config_json: str
+) -> pd.DataFrame:
     """Executa a análise de Monte Carlo e retorna o DataFrame completo com todos os resultados."""
     config = json.loads(config_json)
+    datas_plantio = pd.to_datetime(datas_plantio_str)
     lista_resultados_completos = []
     barra_progresso = st.progress(0, text="Iniciando simulação...")
     status_texto = st.empty()
@@ -206,9 +211,12 @@ if st.button("▶️ Executar Análise de Janelas de Plantio"):
     if not datas_de_plantio_para_analise.empty:
         with st.spinner('Executando simulações... Isso pode levar alguns minutos.'):
             config_string_hasheavel = json.dumps(config, sort_keys=True)
+            datas_plantio_string_list = [d.strftime('%Y-%m-%d') for d in datas_de_plantio_para_analise]
             df_resultados_completos = executar_analise_janelas(
-                datas_plantio=datas_de_plantio_para_analise, ciclo_dias=ciclo_duracao_dias,
-                n_simulacoes=numero_de_simulacoes_por_janela, config_json=config_string_hasheavel
+                datas_plantio_str=datas_plantio_string_list,
+                ciclo_dias=ciclo_duracao_dias,
+                n_simulacoes=numero_de_simulacoes_por_janela,
+                config_json=config_string_hasheavel
             )
         st.success("Análise concluída com sucesso!")
         df_medianas = df_resultados_completos.groupby('data_plantio').median()
