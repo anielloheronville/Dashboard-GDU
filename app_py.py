@@ -1,8 +1,3 @@
-
-# =============================================================================
-# SEÇÃO 0: IMPORTAÇÃO DE BIBLIOTECAS
-#==============================================================================
-
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -12,6 +7,7 @@ from scipy.stats import gamma
 from datetime import timedelta, datetime
 from typing import Dict, Any, Tuple
 from numpy.typing import NDArray
+import json
 
 # =============================================================================
 # SEÇÃO 0: CONSTANTES E CONFIGURAÇÃO GLOBAL
@@ -34,10 +30,8 @@ MONTHLY_CLIMATE_PARAMS = {
 # =============================================================================
 # SEÇÃO 1: FUNÇÕES DO MODELO DE SIMULAÇÃO (Lógica Principal)
 # =============================================================================
-# As funções do modelo (calcular_kc_diario, atualizar_parametros_cultura, simular_processos_diarios)
-# permanecem as mesmas da implementação anterior. Para brevidade, elas não serão repetidas aqui,
-# mas estão incluídas no bloco de código completo abaixo.
 def calcular_kc_diario(gdu_acumulado: float, cfg: Dict[str, Any]) -> float:
+    """Calcula o Coeficiente da Cultura (Kc) diário com base nos estágios fenológicos (GDU)."""
     if gdu_acumulado <= cfg['gdu_fim_fase_inicial']: return cfg['kc_ini']
     elif gdu_acumulado <= cfg['gdu_fim_fase_desenvolvimento']:
         gdu_fase_dev = gdu_acumulado - cfg['gdu_fim_fase_inicial']
@@ -51,6 +45,7 @@ def calcular_kc_diario(gdu_acumulado: float, cfg: Dict[str, Any]) -> float:
     else: return cfg['kc_end']
 
 def atualizar_parametros_cultura(gdu_acumulado: float, cfg: Dict[str, Any]) -> Tuple[float, float]:
+    """Atualiza dinamicamente o albedo e a profundidade da raiz com base no GDU."""
     if gdu_acumulado < cfg['gdu_fim_fase_desenvolvimento']:
         albedo = 0.20; fator_crescimento_raiz = gdu_acumulado / cfg['gdu_fim_fase_desenvolvimento']
         prof_raiz_efetiva = cfg['profundidade_camada1'] + (cfg['profundidade_camada2'] * fator_crescimento_raiz)
@@ -59,6 +54,7 @@ def atualizar_parametros_cultura(gdu_acumulado: float, cfg: Dict[str, Any]) -> T
     prof_max = cfg['profundidade_camada1'] + cfg['profundidade_camada2']; return albedo, min(prof_raiz_efetiva, prof_max)
 
 def simular_processos_diarios(n_dias: int, start_day_of_year: int, latitude_rad: float, altitude: float, cfg: Dict[str, Any]) -> Tuple[NDArray, NDArray, NDArray, NDArray]:
+    """Executa a simulação diária para uma safra completa."""
     precipitacao, eto_arr, gdu_padrao, gdu_ajustado, dias_estresse, runoff = (np.zeros(n_dias) for _ in range(6))
     estado_chuva = np.zeros(n_dias, dtype=np.int64); armazenamento_c1, armazenamento_c2 = (np.zeros(n_dias) for _ in range(2))
     armazenamento_c1[0] = cfg['capacidade_max_camada1'] * 0.8; armazenamento_c2[0] = cfg['capacidade_max_camada2'] * 0.8
@@ -102,21 +98,20 @@ def simular_processos_diarios(n_dias: int, start_day_of_year: int, latitude_rad:
         gdu_ajustado[i] = gdu_padrao[i] * fator_estresse; gdu_acumulado += gdu_ajustado[i]
     return gdu_ajustado, dias_estresse, precipitacao, runoff
 
+
 # =============================================================================
 # SEÇÃO 2: FUNÇÕES PARA EXECUÇÃO DA ANÁLISE E VISUALIZAÇÃO
 # =============================================================================
-
 @st.cache_data
-def executar_analise_janelas(datas_plantio: pd.DatetimeIndex, ciclo_dias: int, n_simulacoes: int, config: Dict[str, Any]) -> pd.DataFrame:
+def executar_analise_janelas(datas_plantio: pd.DatetimeIndex, ciclo_dias: int, n_simulacoes: int, config_json: str) -> pd.DataFrame:
     """Executa a análise de Monte Carlo e retorna o DataFrame completo com todos os resultados."""
+    config = json.loads(config_json)
     lista_resultados_completos = []
     barra_progresso = st.progress(0, text="Iniciando simulação...")
     status_texto = st.empty()
-    
     for i, data_inicio in enumerate(datas_plantio):
         data_fim = data_inicio + timedelta(days=ciclo_dias - 1)
         status_texto.text(f"Simulando para a janela de plantio: {data_inicio.strftime('%d-%m-%Y')} a {data_fim.strftime('%d-%m-%Y')}")
-
         resultados_monte_carlo = []
         for sim in range(n_simulacoes):
             start_day_of_year = data_inicio.dayofyear; latitude_rad = np.deg2rad(config['latitude'])
@@ -128,43 +123,35 @@ def executar_analise_janelas(datas_plantio: pd.DatetimeIndex, ciclo_dias: int, n
                 'precipitacao_total_safra': np.sum(precip_dia), 'runoff_total_safra': np.sum(runoff_dia)
             }
             resultados_monte_carlo.append(metricas)
-        
         df_mc = pd.DataFrame(resultados_monte_carlo)
         df_mc['data_plantio'] = data_inicio.strftime('%Y-%m-%d')
         lista_resultados_completos.append(df_mc)
-        
         barra_progresso.progress((i + 1) / len(datas_plantio), text=f"Analisando janela {i+1}/{len(datas_plantio)}")
-    
     status_texto.text("Simulação concluída!")
     return pd.concat(lista_resultados_completos, ignore_index=True)
 
 def gerar_graficos_distribuicao_plotly(df_completo: pd.DataFrame) -> Tuple[go.Figure, go.Figure]:
     """Gera box plots interativos para GDU e Dias de Estresse Hídrico."""
     df_completo_sorted = df_completo.sort_values(by='data_plantio')
-    
     fig_gdu = px.box(df_completo_sorted, x='data_plantio', y='gdu_final_ajustado',
                      title="Distribuição do GDU Final Ajustado por Janela de Plantio",
                      labels={"data_plantio": "Data de Plantio", "gdu_final_ajustado": "GDU Final Acumulado"},
                      color_discrete_sequence=['cornflowerblue'])
     fig_gdu.update_layout(title_x=0.5, xaxis_title=None, xaxis={'tickangle': 45})
-
     fig_estresse = px.box(df_completo_sorted, x='data_plantio', y='dias_estresse_hidrico',
                           title="Distribuição dos Dias de Estresse Hídrico por Janela de Plantio",
                           labels={"data_plantio": "Data de Plantio", "dias_estresse_hidrico": "Total de Dias com Estresse"},
                           color_discrete_sequence=['tomato'])
     fig_estresse.update_layout(title_x=0.5, xaxis_title="Data de Plantio", xaxis={'tickangle': 45})
-    
     return fig_gdu, fig_estresse
 
 def gerar_grafico_tradeoff_plotly(df_medianas: pd.DataFrame) -> go.Figure:
     """Gera um gráfico de dispersão para visualizar o trade-off entre GDU e estresse."""
     df_medianas['data_plantio_str'] = df_medianas.index.strftime('%d/%m')
-    
     fig = px.scatter(df_medianas, x='dias_estresse_hidrico', y='gdu_final_ajustado',
                      text='data_plantio_str', title="Análise de Trade-Off: GDU vs. Estresse Hídrico",
                      labels={'dias_estresse_hidrico': 'Dias de Estresse Hídrico (Mediana)', 'gdu_final_ajustado': 'GDU Final Ajustado (Mediana)'},
                      hover_data={'data_plantio_str': False, 'dias_estresse_hidrico': ':.1f', 'gdu_final_ajustado': ':.1f'})
-    
     fig.update_traces(textposition='top center', marker=dict(size=12, color='mediumpurple'), textfont_size=11)
     fig.update_layout(title_x=0.5)
     return fig
@@ -172,13 +159,12 @@ def gerar_grafico_tradeoff_plotly(df_medianas: pd.DataFrame) -> go.Figure:
 # =============================================================================
 # SEÇÃO 3: INTERFACE DO USUÁRIO (Streamlit App)
 # =============================================================================
-
 st.set_page_config(layout="wide", page_title="Otimização da Janela de Plantio")
 st.title("🌽 Dashboard de Otimização da Janela de Plantio")
 st.markdown("""
 Esta ferramenta utiliza uma simulação de Monte Carlo para analisar diferentes janelas de plantio.
 O objetivo é identificar as datas que maximizam o acúmulo de Graus-Dia (GDU), minimizando os dias de estresse hídrico.
-Os novos **gráficos de distribuição (box plot)** abaixo mostram não apenas a média (mediana), mas também a variabilidade e o risco (outliers) de cada cenário.
+Os **gráficos de distribuição (box plot)** abaixo mostram não apenas a média (mediana), mas também a variabilidade e o risco (outliers) de cada cenário.
 """)
 
 st.sidebar.header("Parâmetros da Análise")
@@ -219,44 +205,34 @@ config = {
 if st.button("▶️ Executar Análise de Janelas de Plantio"):
     if not datas_de_plantio_para_analise.empty:
         with st.spinner('Executando simulações... Isso pode levar alguns minutos.'):
+            config_string_hasheavel = json.dumps(config, sort_keys=True)
             df_resultados_completos = executar_analise_janelas(
                 datas_plantio=datas_de_plantio_para_analise, ciclo_dias=ciclo_duracao_dias,
-                n_simulacoes=numero_de_simulacoes_por_janela, config=config
+                n_simulacoes=numero_de_simulacoes_por_janela, config_json=config_string_hasheavel
             )
         st.success("Análise concluída com sucesso!")
-        
-        # Calcular medianas para a tabela de resumo e conclusões
         df_medianas = df_resultados_completos.groupby('data_plantio').median()
-        
         st.subheader("📊 Resultados da Simulação (Valores Medianos)")
         st.dataframe(df_medianas.round(1))
-        
-        # Adicionar botão de download
         csv_data = df_resultados_completos.to_csv(index=False).encode('utf-8')
         st.download_button(
            label="📥 Baixar todos os resultados em CSV",
-           data=csv_data,
-           file_name='resultados_completos_simulacao.csv',
-           mime='text/csv',
+           data=csv_data, file_name='resultados_completos_simulacao.csv', mime='text/csv',
         )
-
         st.subheader("📈 Análise de Risco e Variabilidade")
         st.markdown("Os gráficos de caixa (box plot) mostram a mediana (linha central), os quartis (caixa) e a faixa de resultados (bigodes) para cada janela. Pontos individuais são outliers e indicam cenários extremos.")
         fig_gdu, fig_estresse = gerar_graficos_distribuicao_plotly(df_resultados_completos)
         st.plotly_chart(fig_gdu, use_container_width=True)
         st.plotly_chart(fig_estresse, use_container_width=True)
-
         st.subheader("⚖️ Análise de Trade-Off")
         st.markdown("Este gráfico de dispersão ajuda a visualizar a melhor relação GDU vs. Estresse. Janelas ideais se localizam no canto **superior esquerdo** (alto GDU, baixo estresse).")
         fig_tradeoff = gerar_grafico_tradeoff_plotly(df_medianas)
         st.plotly_chart(fig_tradeoff, use_container_width=True)
-
         st.subheader("💡 Análise e Conclusão")
         melhor_gdu_data = df_medianas['gdu_final_ajustado'].idxmax()
         melhor_gdu_valor = df_medianas['gdu_final_ajustado'].max()
         menor_estresse_data = df_medianas['dias_estresse_hidrico'].idxmin()
         menor_estresse_valor = df_medianas['dias_estresse_hidrico'].min()
-
         col1, col2 = st.columns(2)
         with col1:
             st.metric(label="Melhor Janela para GDU Máximo (Mediana)", value=datetime.strptime(melhor_gdu_data, '%Y-%m-%d').strftime('%d/%m/%Y'), delta=f"{melhor_gdu_valor:.1f} GDU")
@@ -264,7 +240,6 @@ if st.button("▶️ Executar Análise de Janelas de Plantio"):
         with col2:
             st.metric(label="Melhor Janela para Estresse Mínimo (Mediana)", value=datetime.strptime(menor_estresse_data, '%Y-%m-%d').strftime('%d/%m/%Y'), delta=f"{menor_estresse_valor:.0f} dias de estresse", delta_color="inverse")
             st.markdown(f"A data de plantio em **{datetime.strptime(menor_estresse_data, '%Y-%m-%d').strftime('%d/%m/%Y')}** apresentou a menor quantidade mediana de dias sob estresse hídrico.")
-
         if melhor_gdu_data == menor_estresse_data:
             st.info(f"🏆 **Recomendação:** A data de **{datetime.strptime(melhor_gdu_data, '%Y-%m-%d').strftime('%d/%m/%Y')}** parece ser a ideal, pois maximiza o GDU e minimiza o estresse hídrico simultaneamente, com base nas medianas.")
         else:
